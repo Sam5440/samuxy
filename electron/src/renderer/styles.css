@@ -165,6 +165,7 @@ button {
 .main-column {
   display: grid;
   grid-template-rows: 32px 32px minmax(0, 1fr);
+  position: relative;
   min-width: 0;
   min-height: 0;
 }
@@ -184,6 +185,7 @@ button {
 
 .titlebar button,
 .titlebar select,
+.update-reminder button,
 .project-rail button,
 .global-tab-strip button,
 .side-panel button,
@@ -272,6 +274,98 @@ button {
 
 .update-control button:disabled {
   color: var(--fg-dim);
+}
+
+.update-reminder {
+  position: absolute;
+  top: 38px;
+  right: 12px;
+  z-index: 50;
+  display: grid;
+  grid-template-columns: 28px minmax(180px, 320px) auto 24px;
+  align-items: center;
+  gap: 10px;
+  max-width: min(560px, calc(100vw - 96px));
+  min-height: 58px;
+  padding: 8px 10px;
+  border: 1px solid rgba(216, 198, 106, 0.45);
+  border-radius: 8px;
+  background: rgba(17, 20, 17, 0.96);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.34);
+  color: var(--fg);
+  pointer-events: none;
+  -webkit-app-region: no-drag;
+}
+
+.update-reminder.available {
+  border-color: rgba(159, 208, 103, 0.68);
+}
+
+.update-reminder-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: rgba(216, 198, 106, 0.12);
+  color: var(--warning);
+}
+
+.update-reminder.available .update-reminder-icon {
+  background: rgba(159, 208, 103, 0.14);
+  color: var(--accent);
+}
+
+.update-reminder-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.update-reminder-kicker {
+  color: var(--fg-dim);
+  font-size: 10px;
+}
+
+.update-reminder-copy strong {
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.update-reminder-copy span {
+  overflow: hidden;
+  color: var(--fg-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.update-reminder button {
+  pointer-events: auto;
+}
+
+.primary-action.compact {
+  width: auto;
+  min-height: 26px;
+  margin-top: 0;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--fg-dim);
+}
+
+.icon-action:hover {
+  background: var(--hover);
+  color: var(--fg);
 }
 
 .content-row {
@@ -912,6 +1006,19 @@ button {
 
   .title-actions {
     display: none;
+  }
+
+  .update-reminder {
+    right: 8px;
+    left: 8px;
+    grid-template-columns: 24px minmax(0, 1fr) 24px;
+    max-width: none;
+  }
+
+  .update-reminder .primary-action {
+    grid-column: 2 / 3;
+    width: max-content;
+    max-width: 100%;
   }
 
   .tab-tools {

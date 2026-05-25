@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import electronUpdater from "electron-updater";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,7 +26,11 @@ const windows = new Set<BrowserWindow>();
 const settings = new SettingsStore(new JSONFileStore<AppSettings>(path.join(dataDirectory, "settings.json")));
 const notifications = new NotificationStore(new JSONFileStore(path.join(dataDirectory, "notifications.json")));
 const aiUsage = new AIUsageService();
-const updates = new UpdateService(settings, autoUpdater, { packaged: app.isPackaged });
+const updates = new UpdateService(settings, autoUpdater, {
+  packaged: app.isPackaged,
+  versionFilePath: path.resolve(dirname, "../../..", "version"),
+  openExternal: (url) => shell.openExternal(url)
+});
 const model = new AppModel(process.cwd(), new JSONFileStore<AppModelSnapshot>(path.join(dataDirectory, "app-model.json")));
 const terminals = new TerminalManager();
 const git = new GitService();

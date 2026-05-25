@@ -2,70 +2,160 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { SettingsStore, type AppSettings } from "../src/main/settings/SettingsStore.js";
 import { JSONFileStore } from "../src/main/storage/JSONFileStore.js";
-import { UpdateService, type UpdaterClient } from "../src/main/updates/UpdateService.js";
+import {
+  defaultRemoteVersionURL,
+  defaultRepositoryURL,
+  UpdateService,
+  type UpdaterClient
+} from "../src/main/updates/UpdateService.js";
 
 const tempRoots: string[] = [];
 
 afterEach(() => {
   delete process.env.SAMUXY_UPDATE_BASE_URL;
   delete process.env.SAMUXY_FORCE_UPDATE_CHECK;
+  delete process.env.SAMUXY_VERSION_FILE;
+  delete process.env.SAMUXY_REMOTE_VERSION_URL;
+  delete process.env.SAMUXY_REPOSITORY_URL;
   for (const root of tempRoots.splice(0)) {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
 describe("UpdateService", () => {
-  it("configures stable and beta generic feeds from persisted settings", () => {
+  it("uses the GitHub raw version URL for stable and beta checks", () => {
     const updater = new FakeUpdater();
     const settings = settingsStore();
     const service = new UpdateService(settings, updater, { packaged: true });
 
-    expect(updater.feed?.url).toBe("https://github.com/samuxy/samuxy/releases/latest/download");
+    expect(service.status().remoteVersionURL).toBe(defaultRemoteVersionURL);
+    expect(service.status().repositoryURL).toBe(defaultRepositoryURL);
+    expect(updater.feed?.url).toBe(defaultRemoteVersionURL);
     expect(updater.feed?.channel).toBe("latest");
 
     service.setChannel("beta");
     expect(settings.get().updateChannel).toBe("beta");
     expect(updater.channel).toBe("beta");
-    expect(updater.feed?.url).toBe("https://github.com/samuxy/samuxy/releases/download/beta-channel");
+    expect(updater.feed?.url).toBe(defaultRemoteVersionURL);
     expect(updater.feed?.channel).toBe("beta");
   });
 
-  it("uses an environment feed override for private Windows update testing", () => {
-    process.env.SAMUXY_UPDATE_BASE_URL = "https://updates.example.test/samuxy/";
-    const updater = new FakeUpdater();
-    const service = new UpdateService(settingsStore(), updater, { packaged: true });
+  it("detects a newer remote version without opening the repository automatically", async () => {
+    const opened: string[] = [];
+    const service = new UpdateService(settingsStore(), new FakeUpdater(), {
+      packaged: true,
+      versionFilePath: writeVersion("0.1.0\n"),
+      fetchText: async (url) => {
+        expect(url).toBe(defaultRemoteVersionURL);
+        return "0.2.0\n";
+      },
+      openExternal: async (url) => {
+        opened.push(url);
+      }
+    });
 
-    expect(service.status().feedURL).toBe("https://updates.example.test/samuxy");
-    expect(updater.feed?.url).toBe("https://updates.example.test/samuxy");
+    const status = await service.checkForUpdates();
+
+    expect(status).toMatchObject({
+      state: "available",
+      currentVersion: "0.1.0",
+      availableVersion: "0.2.0",
+      repositoryURL: defaultRepositoryURL
+    });
+    expect(opened).toEqual([]);
   });
 
-  it("tracks check, download, and downloaded update states", async () => {
-    const updater = new FakeUpdater();
-    const service = new UpdateService(settingsStore(), updater, { packaged: true });
-    const states: string[] = [];
-    service.on("status", (status) => states.push(status.state));
+  it("does not open the repository when the local version is current", async () => {
+    const opened: string[] = [];
+    const service = new UpdateService(settingsStore(), new FakeUpdater(), {
+      packaged: false,
+      versionFilePath: writeVersion("0.2.0"),
+      fetchText: async () => "0.2.0\n",
+      openExternal: async (url) => {
+        opened.push(url);
+      }
+    });
+
+    const status = await service.checkForUpdates();
+
+    expect(status).toMatchObject({
+      state: "not-available",
+      currentVersion: "0.2.0",
+      message: "samuxy is up to date."
+    });
+    expect(opened).toEqual([]);
+  });
+
+  it("opens the repository when the available update action is invoked", async () => {
+    const opened: string[] = [];
+    const service = new UpdateService(settingsStore(), new FakeUpdater(), {
+      packaged: true,
+      versionFilePath: writeVersion("0.1.0"),
+      fetchText: async () => "0.2.0",
+      openExternal: async (url) => {
+        opened.push(url);
+      }
+    });
 
     await service.checkForUpdates();
-    expect(service.status()).toMatchObject({ state: "available", availableVersion: "0.2.0" });
-
     await service.downloadUpdate();
-    expect(service.status()).toMatchObject({ state: "downloaded", progressPercent: 100 });
-    expect(states).toContain("checking");
-    expect(states).toContain("downloading");
-    expect(states).toContain("downloaded");
+
+    expect(service.status().state).toBe("available");
+    expect(opened).toEqual([defaultRepositoryURL]);
   });
 
-  it("does not contact update feeds from unpackaged development builds by default", async () => {
-    const updater = new FakeUpdater();
-    const service = new UpdateService(settingsStore(), updater, { packaged: false });
+  it("supports environment overrides and file URLs for deterministic version checks", async () => {
+    const remoteVersionPath = writeVersion("0.3.0\n");
+    const repositoryURL = "https://example.test/samuxy";
+    process.env.SAMUXY_REMOTE_VERSION_URL = pathToFileURL(remoteVersionPath).href;
+    process.env.SAMUXY_REPOSITORY_URL = repositoryURL;
+    process.env.SAMUXY_VERSION_FILE = writeVersion("0.2.0");
+    const service = new UpdateService(settingsStore(), new FakeUpdater(), {
+      packaged: false,
+      versionFilePath: writeVersion("9.9.9")
+    });
 
-    await service.checkForUpdates();
+    const status = await service.checkForUpdates();
 
-    expect(updater.checks).toBe(0);
-    expect(service.status().message).toBe("Update checks are available in packaged builds.");
+    expect(status).toMatchObject({
+      state: "available",
+      currentVersion: "0.2.0",
+      availableVersion: "0.3.0",
+      remoteVersionURL: process.env.SAMUXY_REMOTE_VERSION_URL,
+      repositoryURL
+    });
+  });
+
+  it("reports remote version fetch failures as update errors", async () => {
+    const service = new UpdateService(settingsStore(), new FakeUpdater(), {
+      packaged: true,
+      versionFilePath: writeVersion("0.1.0"),
+      fetchText: async () => {
+        throw new Error("network unavailable");
+      }
+    });
+
+    const status = await service.checkForUpdates();
+
+    expect(status.state).toBe("error");
+    expect(status.message).toBe("network unavailable");
+  });
+
+  it("reports invalid local version files as update errors", async () => {
+    const service = new UpdateService(settingsStore(), new FakeUpdater(), {
+      packaged: true,
+      versionFilePath: writeVersion("not-a-version"),
+      fetchText: async () => "0.2.0"
+    });
+
+    const status = await service.checkForUpdates();
+
+    expect(status.state).toBe("error");
+    expect(status.message).toBe("Invalid version value.");
   });
 });
 
@@ -75,7 +165,6 @@ class FakeUpdater extends EventEmitter implements UpdaterClient {
   channel: string | null = null;
   currentVersion = { version: "0.1.0" };
   feed?: { provider: "generic"; url: string; channel?: string };
-  checks = 0;
   installs = 0;
 
   setFeedURL(options: { provider: "generic"; url: string; channel?: string }): void {
@@ -83,15 +172,12 @@ class FakeUpdater extends EventEmitter implements UpdaterClient {
   }
 
   async checkForUpdates(): Promise<unknown> {
-    this.checks += 1;
     this.emit("checking-for-update");
-    this.emit("update-available", { version: "0.2.0" });
     return {};
   }
 
   async downloadUpdate(): Promise<unknown> {
     this.emit("download-progress", { percent: 45 });
-    this.emit("update-downloaded", { version: "0.2.0" });
     return [];
   }
 
@@ -102,6 +188,12 @@ class FakeUpdater extends EventEmitter implements UpdaterClient {
 
 function settingsStore(): SettingsStore {
   return new SettingsStore(new JSONFileStore<AppSettings>(path.join(makeTempRoot(), "settings.json")));
+}
+
+function writeVersion(content: string): string {
+  const filePath = path.join(makeTempRoot(), "version");
+  fs.writeFileSync(filePath, content, "utf8");
+  return filePath;
 }
 
 function makeTempRoot(): string {

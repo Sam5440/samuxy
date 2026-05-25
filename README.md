@@ -116,8 +116,23 @@ Useful local overrides:
 ```text
 SAMUXY_APP_DATA_DIR
 SAMUXY_AI_USAGE_DIR
-SAMUXY_UPDATE_BASE_URL
-SAMUXY_FORCE_UPDATE_CHECK
+SAMUXY_VERSION_FILE
+SAMUXY_REMOTE_VERSION_URL
+SAMUXY_REPOSITORY_URL
+```
+
+## Update Checks
+
+samuxy reads the local version from the repository root `version` file, then compares it with:
+
+```text
+https://raw.githubusercontent.com/Sam5440/samuxy/refs/heads/main/version
+```
+
+samuxy checks this file on every app startup and every project/workspace switch. When the remote version is newer, the Windows UI shows an update reminder. Clicking `打开更新` opens:
+
+```text
+https://github.com/Sam5440/samuxy
 ```
 
 

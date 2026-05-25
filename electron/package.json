@@ -36,6 +36,12 @@
       "dist/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "../version",
+        "to": "version"
+      }
+    ],
     "npmRebuild": false,
     "buildDependenciesFromSource": false,
     "asar": true,

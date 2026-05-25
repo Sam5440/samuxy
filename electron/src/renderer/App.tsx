@@ -117,6 +117,14 @@ interface DashboardState {
 
 type SidePanelKey = "files" | "search" | "source" | "input" | "ai" | "notifications" | "shortcuts" | "status";
 type PanelVisibility = Record<SidePanelKey, boolean>;
+type UpdateReminderReason = "startup" | "project-switch";
+
+interface UpdateReminderState {
+  key: string;
+  projectID: string;
+  reason: UpdateReminderReason;
+  dismissed: boolean;
+}
 
 const initialPanels: PanelVisibility = {
   files: true,
@@ -163,8 +171,11 @@ function App() {
   const [selectedTabIDs, setSelectedTabIDs] = useState<string[]>([]);
   const [activePanel, setActivePanel] = useState<SidePanelKey>("files");
   const [railExpanded, setRailExpanded] = useState(false);
+  const [updateReminder, setUpdateReminder] = useState<UpdateReminderState>();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const panelRefs = useRef<Partial<Record<SidePanelKey, HTMLElement | null>>>({});
+  const previousUpdateProjectIDRef = useRef<string | undefined>(undefined);
+  const updateReminderCounterRef = useRef(0);
 
   useEffect(() => {
     void Promise.all([
@@ -188,6 +199,15 @@ function App() {
     ? focusedTab.paneID
     : allTabs.find((tab) => tab.kind === "terminal" && tab.paneID)?.paneID;
   const mobilePort = settings?.mobilePort ?? state.mobilePort;
+
+  useEffect(() => {
+    if (!activeProject?.id) return;
+    const previousProjectID = previousUpdateProjectIDRef.current;
+    if (previousProjectID === activeProject.id) return;
+    previousUpdateProjectIDRef.current = activeProject.id;
+    const reason: UpdateReminderReason = previousProjectID ? "project-switch" : "startup";
+    void runUpdateReminderCheck(reason, activeProject.id);
+  }, [activeProject?.id]);
 
   useEffect(() => {
     if (!activeProject) return;
@@ -471,12 +491,27 @@ function App() {
     setSettings(await window.samuxy.updateSettings({ updateChannel: channel }));
   }
 
+  async function runUpdateReminderCheck(reason: UpdateReminderReason, projectID: string) {
+    updateReminderCounterRef.current += 1;
+    setUpdateReminder({
+      key: `${reason}:${projectID}:${updateReminderCounterRef.current}`,
+      projectID,
+      reason,
+      dismissed: false
+    });
+    setUpdateStatus(await window.samuxy.checkForUpdates());
+  }
+
   async function checkForUpdates() {
     setUpdateStatus(await window.samuxy.checkForUpdates());
   }
 
   async function downloadUpdate() {
     setUpdateStatus(await window.samuxy.downloadUpdate());
+  }
+
+  function dismissUpdateReminder() {
+    setUpdateReminder((current) => current ? { ...current, dismissed: true } : current);
   }
 
   async function markNotificationRead(notificationID: string) {
@@ -562,6 +597,13 @@ function App() {
             <div className="mobile-chip"><MonitorSmartphone size={14} /> 移动端:{mobilePort}</div>
           </div>
         </header>
+
+        <UpdateReminder
+          reminder={updateReminder}
+          status={updateStatus}
+          onOpen={() => void downloadUpdate()}
+          onDismiss={dismissUpdateReminder}
+        />
 
         {state.workspace && (
           <GlobalTabStrip
@@ -880,12 +922,42 @@ function CodeEditor({ file, value, onChange }: { file: TextFileResult; value: st
   return (<div className="code-editor-wrap" data-testid="code-preview" data-language={file.language}><pre className="code-highlight" aria-hidden="true" ref={highlightRef}><code dangerouslySetInnerHTML={{ __html: highlighted }} /></pre><textarea className="editor code-editor-input" spellCheck={false} value={value} onChange={(event) => onChange(event.target.value)} onScroll={(event) => { if (!highlightRef.current) return; highlightRef.current.scrollTop = event.currentTarget.scrollTop; highlightRef.current.scrollLeft = event.currentTarget.scrollLeft; }} aria-label={`${file.path} 代码编辑器`} /></div>);
 }
 
+function UpdateReminder({ reminder, status, onOpen, onDismiss }: { reminder?: UpdateReminderState; status?: UpdateStatus; onOpen: () => void; onDismiss: () => void; }) {
+  if (!reminder || reminder.dismissed) return null;
+  const state = status?.state ?? "checking";
+  const available = state === "available";
+  const checking = state === "checking" || state === "idle";
+  const errored = state === "error";
+  const reasonLabel = reminder.reason === "startup" ? "启动时检测" : "切换工作区检测";
+  const title = available ? "发现新版本" : errored ? "更新检测失败" : checking ? "正在检测更新" : "已是最新版本";
+  const body = available
+    ? `当前版本 ${status?.currentVersion ?? "未知"}，远端版本 ${status?.availableVersion ?? "未知"}。`
+    : errored
+      ? status?.message ?? "无法读取远端 version 文件。"
+      : checking
+        ? "正在读取远端 version 文件。"
+        : `当前版本 ${status?.currentVersion ?? "未知"}。`;
+
+  return (
+    <aside className={available ? "update-reminder available" : "update-reminder"} data-testid="update-reminder" aria-live="polite">
+      <div className="update-reminder-icon">{available ? <Download size={16} /> : <RefreshCw size={16} />}</div>
+      <div className="update-reminder-copy">
+        <div className="update-reminder-kicker">{reasonLabel}</div>
+        <strong>{title}</strong>
+        <span>{body}</span>
+      </div>
+      {available && <button className="primary-action compact" onClick={onOpen}>打开更新</button>}
+      <button className="icon-action" aria-label="关闭更新提醒" onClick={onDismiss}><X size={14} /></button>
+    </aside>
+  );
+}
+
 function UpdateControl({ status, onCheck, onDownload, onInstall, onChannel }: { status?: UpdateStatus; onCheck: () => void; onDownload: () => void; onInstall: () => void; onChannel: (channel: "stable" | "beta") => void; }) {
   const checking = status?.state === "checking";
   const available = status?.state === "available";
   const downloaded = status?.state === "downloaded";
-  const label = downloaded ? `安装 ${status?.availableVersion ?? ""}`.trim() : available ? `下载 ${status?.availableVersion ?? ""}`.trim() : checking ? "检查中" : status?.state === "downloading" ? `${Math.round(status.progressPercent ?? 0)}%` : "检查更新";
-  return (<div className="update-control"><select aria-label="更新通道" value={status?.channel ?? "stable"} onChange={(event) => onChannel(event.target.value as "stable" | "beta")}><option value="stable">稳定</option><option value="beta">测试</option></select><button aria-label={downloaded ? "安装更新" : available ? "下载更新" : "检查更新"} onClick={downloaded ? onInstall : available ? onDownload : onCheck} disabled={checking}>{available ? <Download size={14} /> : <RefreshCw size={14} />}<span>{label}</span></button></div>);
+  const label = downloaded ? `安装 ${status?.availableVersion ?? ""}`.trim() : available ? `打开更新 ${status?.availableVersion ?? ""}`.trim() : checking ? "检查中" : status?.state === "downloading" ? `${Math.round(status.progressPercent ?? 0)}%` : "检查更新";
+  return (<div className="update-control"><select aria-label="更新通道" value={status?.channel ?? "stable"} onChange={(event) => onChannel(event.target.value as "stable" | "beta")}><option value="stable">稳定</option><option value="beta">测试</option></select><button aria-label={downloaded ? "安装更新" : available ? "打开更新" : "检查更新"} onClick={downloaded ? onInstall : available ? onDownload : onCheck} disabled={checking}>{available ? <Download size={14} /> : <RefreshCw size={14} />}<span>{label}</span></button></div>);
 }
 
 function RemoteControlledTerminal({

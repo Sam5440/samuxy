@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
 import { _electron as electron, expect, test } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
@@ -10,6 +11,7 @@ test.describe("Electron Windows UI", () => {
   let page: Page;
   let root: string;
   let fixturePaths: string[];
+  let remoteVersionFile: string;
 
   test.beforeEach(async () => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), "samuxy-e2e-"));
@@ -20,6 +22,10 @@ test.describe("Electron Windows UI", () => {
     fs.mkdirSync(usage, { recursive: true });
     fs.writeFileSync(path.join(usage, "claude-usage.json"), JSON.stringify({ five_hour: { utilization: 22 } }), "utf8");
     fs.writeFileSync(path.join(appData, "settings.json"), JSON.stringify({ mobilePort: 58765 }), "utf8");
+    const localVersionFile = path.join(root, "version");
+    remoteVersionFile = path.join(root, "remote-version");
+    fs.writeFileSync(localVersionFile, "0.1.0\n", "utf8");
+    fs.writeFileSync(remoteVersionFile, "0.1.0\n", "utf8");
     const secondaryProject = path.join(root, "samuxy-secondary-project");
     fs.mkdirSync(secondaryProject, { recursive: true });
     fs.writeFileSync(path.join(secondaryProject, "secondary-only.txt"), "secondary project\n", "utf8");
@@ -34,7 +40,9 @@ test.describe("Electron Windows UI", () => {
       env: {
         ...process.env,
         SAMUXY_APP_DATA_DIR: appData,
-        SAMUXY_AI_USAGE_DIR: usage
+        SAMUXY_AI_USAGE_DIR: usage,
+        SAMUXY_VERSION_FILE: localVersionFile,
+        SAMUXY_REMOTE_VERSION_URL: pathToFileURL(remoteVersionFile).href
       }
     });
     page = await app.firstWindow();
@@ -185,11 +193,20 @@ test.describe("Electron Windows UI", () => {
     await page.setViewportSize({ width: 1280, height: 820 });
     const secondaryButton = page.getByRole("button", { name: "samuxy-secondary-project" });
 
+    await expect(page.getByTestId("update-reminder")).toBeVisible();
+    await expect(page.getByTestId("update-reminder")).toContainText("已是最新版本");
+    await page.getByLabel("关闭更新提醒").click();
+    await expect(page.getByTestId("update-reminder")).toBeHidden();
+    fs.writeFileSync(remoteVersionFile, "0.2.0\n", "utf8");
+
     await expect(secondaryButton).toHaveAttribute("aria-pressed", "false");
     await secondaryButton.click();
     await expect(secondaryButton).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByText("secondary-only.txt")).toBeVisible();
     await expect(page.locator(".window-title span")).toContainText("samuxy-secondary-project");
+    await expect(page.getByTestId("update-reminder")).toBeVisible();
+    await expect(page.getByTestId("update-reminder")).toContainText("发现新版本");
+    await expect(page.getByTestId("update-reminder")).toContainText("0.2.0");
 
     await page.locator(".project-token").first().click();
     await expect(secondaryButton).toHaveAttribute("aria-pressed", "false");

@@ -15,7 +15,7 @@ export function defaultShell(
   commandExists: (command: string, env?: Record<string, string | undefined>) => boolean = commandExistsOnPath
 ): string {
   const cmd = env.ComSpec ?? "C:\\Windows\\System32\\cmd.exe";
-  if (preference === "nushell") return resolveNuShell(env, commandExists) ?? "nu";
+  if (preference === "nushell") return resolveNuShell(env, commandExists) ?? cmd;
   if (preference === "cmd") return cmd;
   if (preference === "powershell") return "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
   return resolveNuShell(env, commandExists) ?? cmd;

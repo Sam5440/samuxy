@@ -154,12 +154,16 @@ button {
   gap: 2px;
 }
 
+.project-rail:not([data-expanded="true"]) .project-token-row {
+  grid-template-columns: 1fr;
+}
+
 .project-token-row .project-token {
   min-width: 0;
 }
 
 .project-remove {
-  display: grid;
+  display: none;
   place-items: center;
   width: 18px;
   height: 18px;
@@ -167,12 +171,14 @@ button {
   background: transparent;
   color: var(--fg-dim);
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.15s;
 }
 
-.project-token-row:hover .project-remove,
 .project-rail[data-expanded="true"] .project-remove {
+  display: grid;
   opacity: 1;
+  pointer-events: auto;
 }
 
 .project-remove:hover {

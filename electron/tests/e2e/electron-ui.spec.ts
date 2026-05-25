@@ -73,7 +73,7 @@ test.describe("Electron Windows UI", () => {
   test("keeps the mobile-sized Chinese layout usable with all panels still rendered", async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.getByTestId("rail-expand-button")).toBeVisible();
-    await expect(page.getByText("终端", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("global-tab-strip").getByRole("button", { name: "终端", exact: true })).toBeVisible();
     await expect(page.getByText("文件树", { exact: true })).toBeVisible();
     await expect(page.getByPlaceholder("搜索文件")).toBeVisible();
     await expect(page.getByPlaceholder("富输入草稿")).toBeVisible();
@@ -165,8 +165,16 @@ test.describe("Electron Windows UI", () => {
       (dialog as any).showOpenDialog = async () => ({ canceled: false, filePaths: [projectPath] });
     }, addedProject);
     await page.locator(".project-token.add").click();
-    await expect(page.getByRole("button", { name: "samuxy-added-project" })).toBeVisible();
-    await page.locator(".project-token").first().click();
+    const addedProjectButton = projectToken(page, "samuxy-added-project");
+    const addedProjectRemoveButton = page.locator(".project-stack .project-remove[aria-label='移除 samuxy-added-project']");
+    await expect(addedProjectButton).toBeVisible();
+    await expect(addedProjectRemoveButton).toBeVisible();
+    await page.locator(".project-stack .project-token:not(.add)").first().click();
+    await railExpandButton.click();
+    await expect(rail).toHaveAttribute("data-expanded", "false");
+    await expect(addedProjectRemoveButton).toBeHidden();
+    await addedProjectButton.click();
+    await expect(addedProjectButton).toHaveAttribute("aria-pressed", "true");
 
     await page.locator(".side-panel-title button").click();
     await railFooterButtons.nth(0).click();
@@ -191,7 +199,7 @@ test.describe("Electron Windows UI", () => {
 
   test("switches projects from the left rail and refreshes workspace content", async () => {
     await page.setViewportSize({ width: 1280, height: 820 });
-    const secondaryButton = page.getByRole("button", { name: "samuxy-secondary-project" });
+    const secondaryButton = projectToken(page, "samuxy-secondary-project");
 
     await expect(page.getByTestId("update-reminder")).toBeVisible();
     await expect(page.getByTestId("update-reminder")).toContainText("已是最新版本");
@@ -208,7 +216,7 @@ test.describe("Electron Windows UI", () => {
     await expect(page.getByTestId("update-reminder")).toContainText("发现新版本");
     await expect(page.getByTestId("update-reminder")).toContainText("0.2.0");
 
-    await page.locator(".project-token").first().click();
+    await page.locator(".project-stack .project-token:not(.add)").first().click();
     await expect(secondaryButton).toHaveAttribute("aria-pressed", "false");
     await expect(page.getByText("samuxy-preview-code.ts")).toBeVisible();
   });
@@ -303,6 +311,10 @@ async function closeElectronApp(app: ElectronApplication): Promise<void> {
     closePromise,
     new Promise<void>((resolve) => setTimeout(resolve, 5000))
   ]);
+}
+
+function projectToken(page: Page, name: string) {
+  return page.locator(".project-stack .project-token:not(.add)").filter({ hasText: name });
 }
 
 async function takeOverPaneFromMobile(page: Page, port: number): Promise<{ paneID: string }> {

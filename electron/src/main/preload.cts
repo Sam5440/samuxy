@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from "electron";
 contextBridge.exposeInMainWorld("samuxy", {
   dashboard: () => ipcRenderer.invoke("samuxy:dashboard"),
   addProject: () => ipcRenderer.invoke("samuxy:addProject"),
+  removeProject: (projectID: string) => ipcRenderer.invoke("samuxy:removeProject", projectID),
   selectProject: (projectID: string) => ipcRenderer.invoke("samuxy:selectProject", projectID),
   createTab: (projectID: string, areaID: string | undefined, kind: string) => ipcRenderer.invoke("samuxy:createTab", projectID, areaID, kind),
   selectTab: (projectID: string, areaID: string, tabID: string) => ipcRenderer.invoke("samuxy:selectTab", projectID, areaID, tabID),

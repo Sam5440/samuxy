@@ -130,7 +130,7 @@ const initialPanels: PanelVisibility = {
   files: true,
   search: true,
   source: false,
-  input: false,
+  input: true,
   ai: true,
   notifications: true,
   shortcuts: true,

@@ -154,15 +154,10 @@ ipcMain.handle("samuxy:addProject", async () => {
 });
 
 ipcMain.handle("samuxy:removeProject", (_event, projectID: string) => {
-  const closedPaneIDs: string[] = [];
   const workspace = model.getWorkspace(projectID);
-  if (workspace) {
-    for (const session of model.terminalSessions()) {
-      if (model.projectPath(projectID)) {
-        terminals.close(session.paneID);
-        closedPaneIDs.push(session.paneID);
-      }
-    }
+  const closedPaneIDs = workspace ? collectPaneIDs(workspace.root) : [];
+  for (const paneID of closedPaneIDs) {
+    terminals.close(paneID);
   }
   return model.removeProject(projectID) ? dashboardPayload() : undefined;
 });
@@ -307,3 +302,10 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   void server.stop();
 });
+
+function collectPaneIDs(node: SplitNodeDTO): string[] {
+  if (node.type === "tabArea") {
+    return node.tabArea.tabs.flatMap((tab) => tab.paneID ? [tab.paneID] : []);
+  }
+  return [...collectPaneIDs(node.split.first), ...collectPaneIDs(node.split.second)];
+}

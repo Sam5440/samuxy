@@ -81,6 +81,17 @@ describe("NotificationStore", () => {
   });
 });
 
+describe("AppModel", () => {
+  it("removes projects without disturbing other projects", () => {
+    const model = new AppModel(process.cwd());
+    const first = model.listProjects()[0];
+    const second = model.addProject(path.join(makeTempRoot(), "secondary"));
+    expect(model.removeProject(first.id)).toBe(true);
+    expect(model.listProjects().some((project) => project.id === second.id)).toBe(true);
+    expect(model.getWorkspace(first.id)).toBeUndefined();
+  });
+});
+
 function makeTempRoot(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "samuxy-settings-"));
   tempRoots.push(root);

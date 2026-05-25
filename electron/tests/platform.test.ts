@@ -20,4 +20,9 @@ describe("platform paths", () => {
     expect(defaultShell("cmd", env, () => false)).toBe("C:\\Windows\\System32\\cmd.exe");
     expect(defaultShell("powershell", env, () => false)).toContain("WindowsPowerShell");
   });
+
+  it("falls back to cmd when nushell is unavailable", () => {
+    const env = { ComSpec: "C:\\Windows\\System32\\cmd.exe", PATH: "" };
+    expect(defaultShell("nushell", env, () => false)).toBe("C:\\Windows\\System32\\cmd.exe");
+  });
 });

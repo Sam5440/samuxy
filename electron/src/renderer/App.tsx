@@ -130,7 +130,7 @@ const initialPanels: PanelVisibility = {
   files: true,
   search: true,
   source: false,
-  input: true,
+  input: false,
   ai: true,
   notifications: true,
   shortcuts: true,
@@ -139,12 +139,12 @@ const initialPanels: PanelVisibility = {
 
 const shortcutLabels: Record<string, string> = {
   commandPalette: "命令面板",
-  quickOpen: "快速打开",
-  findInFiles: "全局搜索",
   searchFiles: "全局搜索",
+  findInFiles: "全局搜索",
   saveFile: "保存文件",
   newTab: "新建标签",
   newTerminal: "新建终端",
+  closeTab: "关闭标签",
   splitRight: "向右拆分",
   splitDown: "向下拆分",
   toggleSidebar: "切换侧栏"
@@ -199,6 +199,16 @@ function App() {
     ? focusedTab.paneID
     : allTabs.find((tab) => tab.kind === "terminal" && tab.paneID)?.paneID;
   const mobilePort = settings?.mobilePort ?? state.mobilePort;
+  const activeProjectRef = useRef(activeProject);
+  activeProjectRef.current = activeProject;
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const activeFileRef = useRef(activeFile);
+  activeFileRef.current = activeFile;
+  const focusedAreaRef = useRef(focusedArea);
+  focusedAreaRef.current = focusedArea;
+  const areasRef = useRef(areas);
+  areasRef.current = areas;
 
   useEffect(() => {
     if (!activeProject?.id) return;
@@ -213,7 +223,7 @@ function App() {
     if (!activeProject) return;
     void window.samuxy.fileTree(activeProject.id).then((entries) => {
       setTree(entries);
-      setExpandedDirs(new Set(collectDirectoryPaths(entries)));
+      setExpandedDirs(new Set(["__root__", ...collectDirectoryPaths(entries)]));
     });
   }, [activeProject?.id]);
 
@@ -245,6 +255,75 @@ function App() {
     const liveTabIDs = new Set(allTabs.map((tab) => tab.id));
     setSelectedTabIDs((current) => current.filter((tabID) => liveTabIDs.has(tabID)).slice(0, 3));
   }, [allTabs.map((tab) => tab.id).join("|")]);
+  useEffect(() => {
+    function parseShortcut(shortcut: string): { ctrl: boolean; shift: boolean; alt: boolean; key: string } | undefined {
+      const parts = shortcut.toUpperCase().split("+");
+      const key = parts.pop();
+      if (!key) return undefined;
+      return {
+        ctrl: parts.includes("CTRL"),
+        shift: parts.includes("SHIFT"),
+        alt: parts.includes("ALT"),
+        key,
+      };
+    }
+
+    const shortcutActions: Record<string, () => void> = {
+      commandPalette: () => showPanel("shortcuts"),
+      searchFiles: () => showPanel("search"),
+      findInFiles: () => showPanel("search"),
+      saveFile: () => {
+        const project = activeProjectRef.current;
+        const file = activeFileRef.current;
+        if (!project || !file?.editable) return;
+        setStatus("正在保存");
+        window.samuxy.writeFile(project.id, file.path, draftRef.current).then((f) => {
+          setActiveFile(f);
+          setStatus("已保存");
+        });
+      },
+      newTerminal: () => { void createGlobalTab("terminal"); },
+      newTab: () => { void createGlobalTab(); },
+      toggleSidebar: () => toggleRailExpanded(),
+      closeTab: () => {
+        const area = focusedAreaRef.current;
+        if (!area) return;
+        const tab = area.tabs.find((t) => t.id === area.activeTabID) ?? area.tabs[0];
+        if (tab) void closeTab(area, tab);
+      },
+      splitRight: () => { if (focusedArea) splitArea(focusedArea.id, "horizontal"); },
+      splitDown: () => { if (focusedArea) splitArea(focusedArea.id, "vertical"); },
+    };
+
+    function onKeyDown(event: KeyboardEvent) {
+      const hasModifier = event.ctrlKey || event.altKey || event.metaKey;
+      if (!hasModifier) {
+        const target = event.target as HTMLElement;
+        if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return;
+      }
+
+      const shortcuts = settings?.shortcuts ?? {};
+      for (const [action, shortcut] of Object.entries(shortcuts)) {
+        const parsed = parseShortcut(shortcut);
+        if (!parsed) continue;
+        if (
+          event.ctrlKey === parsed.ctrl &&
+          event.shiftKey === parsed.shift &&
+          event.altKey === parsed.alt &&
+          event.key.toUpperCase() === parsed.key
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          const handler = shortcutActions[action];
+          if (handler) handler();
+          return;
+        }
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [settings, focusedArea, sidePanelOpen, panels, activeProject]);
 
   function applyWorkspace(workspace: WorkspaceDTO | undefined, fallbackStatus?: string) {
     if (!workspace) {
@@ -324,6 +403,24 @@ function App() {
     setSidePanelOpen(true);
     setStatus("Project added");
   }
+  async function removeProject(projectID: string) {
+    if (state.projects.length <= 1) {
+      setStatus("至少保留一个项目");
+      return;
+    }
+    setStatus("正在移除项目");
+    const dashboard = await window.samuxy.removeProject(projectID);
+    if (!dashboard) {
+      setStatus("移除项目失败");
+      return;
+    }
+    setState(dashboard);
+    setActiveFile(undefined);
+    setMatches([]);
+    setQuery("");
+    setVCSStatus(undefined);
+    setStatus("项目已移除");
+  }
 
   async function focusArea(areaID: string) {
     if (!activeProject || state.workspace?.focusedAreaID === areaID) return;
@@ -364,10 +461,11 @@ function App() {
   }
 
   async function closeTab(area: TabAreaDTO, tab: TabDTO) {
-    if (!activeProject) return;
+    const project = activeProjectRef.current;
+    if (!project) return;
     if (area.tabs.length <= 1) {
-      if (areas.length > 1) {
-        const workspace = await window.samuxy.closeArea(activeProject.id, area.id);
+      if (areasRef.current.length > 1) {
+        const workspace = await window.samuxy.closeArea(project.id, area.id);
         applyWorkspace(workspace, "关闭区域失败");
         setStatus(workspace ? "已关闭区域" : "关闭区域失败");
         return;
@@ -375,7 +473,7 @@ function App() {
       setStatus("至少保留一个标签");
       return;
     }
-    const workspace = await window.samuxy.closeTab(activeProject.id, area.id, tab.id);
+    const workspace = await window.samuxy.closeTab(project.id, area.id, tab.id);
     applyWorkspace(workspace, "关闭标签失败");
     setStatus(workspace ? "已关闭标签" : "关闭标签失败");
   }
@@ -443,9 +541,11 @@ function App() {
   }
 
   async function saveFile() {
-    if (!activeProject || !activeFile?.editable) return;
+    const project = activeProjectRef.current;
+    const file = activeFileRef.current;
+    if (!project || !file?.editable) return;
     setStatus("正在保存");
-    setActiveFile(await window.samuxy.writeFile(activeProject.id, activeFile.path, draft));
+    setActiveFile(await window.samuxy.writeFile(project.id, file.path, draftRef.current));
     setStatus("已保存");
   }
 
@@ -484,6 +584,11 @@ function App() {
 
   async function updateShortcut(action: string, shortcut: string) {
     setSettings(await window.samuxy.updateSettings({ shortcuts: { [action]: shortcut } }));
+  }
+
+  async function updateTerminalShell(terminalShell: AppSettings["terminalShell"]) {
+    setSettings(await window.samuxy.updateSettings({ terminalShell }));
+    setStatus("\u7ec8\u7aef Shell \u8bbe\u7f6e\u5df2\u66f4\u65b0\uff0c\u65b0\u5efa\u7ec8\u7aef\u540e\u751f\u6548");
   }
 
   async function setUpdateChannel(channel: "stable" | "beta") {
@@ -526,7 +631,7 @@ function App() {
       setVCSStatus(await window.samuxy.vcsStatus(activeProject.id));
     } catch (error) {
       setVCSStatus(undefined);
-      setVCSError((error as Error).message || "婧愪唬鐮佺鐞嗕笉鍙敤");
+      setVCSError((error as Error).message || "源代码管理不可用");
     }
   }
 
@@ -558,17 +663,28 @@ function App() {
         </button>
         <div className="project-stack">
           {state.projects.map((project, index) => (
-            <button
-              key={project.id}
-              className={project.id === activeProject?.id ? "project-token active" : "project-token"}
-              aria-label={project.name}
-              aria-pressed={project.id === activeProject?.id}
-              title={project.name}
-              onClick={() => void selectProject(project)}
-            >
-              <span className="project-token-letter">{project.name.slice(0, 1).toUpperCase()}</span>
-              <span className="rail-label">{project.name}</span>
-            </button>
+            <div key={project.id} className="project-token-row">
+              <button
+                className={project.id === activeProject?.id ? "project-token active" : "project-token"}
+                aria-label={project.name}
+                aria-pressed={project.id === activeProject?.id}
+                title={project.name}
+                onClick={() => void selectProject(project)}
+              >
+                <span className="project-token-letter">{project.name.slice(0, 1).toUpperCase()}</span>
+                <span className="rail-label">{project.name}</span>
+              </button>
+              {state.projects.length > 1 && (
+                <button
+                  className="project-remove"
+                  aria-label={`移除 ${project.name}`}
+                  title={`移除 ${project.name}`}
+                  onClick={(e) => { e.stopPropagation(); void removeProject(project.id); }}
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
           ))}
           <button className="project-token add" aria-label="添加项目" onClick={() => void addProject()}>
             <Plus size={15} />
@@ -677,7 +793,28 @@ function App() {
               {panels.files && (
                 <section ref={rememberPanel("files")} className="side-section" aria-label="文件树面板" data-testid="files-panel" data-active={activePanel === "files"}>
                   <div className="side-heading"><Folder size={14} /> 文件树</div>
-                  <FileTree entries={tree} expandedDirs={expandedDirs} onToggleDirectory={(path) => setExpandedDirs((current) => toggleSetValue(current, path))} onOpen={openFile} />
+                  {activeProject ? (
+                    <div className="file-tree">
+                      <div>
+                        <button
+                          className="file-row"
+                          aria-expanded={expandedDirs.has("__root__")}
+                          onClick={() => setExpandedDirs((current) => toggleSetValue(current, "__root__"))}
+                        >
+                          <span className="disclosure">{expandedDirs.has("__root__") ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
+                          <Folder size={14} />
+                          <span>{activeProject.name}</span>
+                        </button>
+                        {expandedDirs.has("__root__") && tree.length > 0 && (
+                          <div className="file-children">
+                            <FileTree entries={tree} expandedDirs={expandedDirs} onToggleDirectory={(path) => setExpandedDirs((current) => toggleSetValue(current, path))} onOpen={openFile} />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <FileTree entries={tree} expandedDirs={expandedDirs} onToggleDirectory={(path) => setExpandedDirs((current) => toggleSetValue(current, path))} onOpen={openFile} />
+                  )}
                 </section>
               )}
               {panels.search && (
@@ -711,9 +848,11 @@ function App() {
                 </section>
               )}
               {panels.shortcuts && (
-                <section ref={rememberPanel("shortcuts")} className="side-section" aria-label="快捷键面板" data-testid="shortcuts-panel" data-active={activePanel === "shortcuts"}>
-                  <div className="side-heading"><Settings size={14} /> 快捷键</div>
-                  <div className="shortcut-editor">{Object.entries(settings?.shortcuts ?? {}).slice(0, 7).map(([action, shortcut]) => (<label key={action}><span>{shortcutLabels[action] ?? action}</span><input value={shortcut} onChange={(event) => void updateShortcut(action, event.target.value)} /></label>))}</div>
+                <section ref={rememberPanel("shortcuts")} className="side-section" aria-label="设置面板" data-testid="shortcuts-panel" data-active={activePanel === "shortcuts"}>
+                  <div className="side-heading"><Settings size={14} /> 设置</div>
+                  <label className="terminal-shell-setting"><span>终端 Shell</span><select value={settings?.terminalShell ?? "auto"} onChange={(event) => void updateTerminalShell(event.target.value as AppSettings["terminalShell"])}><option value="auto">自动：优先 Nushell</option><option value="nushell">Nushell</option><option value="cmd">Command Prompt</option><option value="powershell">Windows PowerShell</option></select></label>
+                  <div className="side-heading compact"><Keyboard size={14} /> 快捷键</div>
+                  <div className="shortcut-editor">{Object.entries(settings?.shortcuts ?? {}).slice(0, 10).map(([action, shortcut]) => (<label key={action}><span>{shortcutLabels[action] ?? action}</span><input value={shortcut} onChange={(event) => void updateShortcut(action, event.target.value)} /></label>))}</div>
                 </section>
               )}
               {panels.status && (
@@ -986,7 +1125,7 @@ function TerminalSurface({ paneID }: { paneID: string }) {
     const terminal = new XTerm({
       cursorBlink: true,
       convertEol: true,
-      fontFamily: '"Cascadia Mono", "Consolas", monospace',
+      fontFamily: '"Maple Mono NF CN", "Hack Nerd Font Mono", "Hack Nerd Font", "Cascadia Code", "Cascadia Mono", "Consolas", "Courier New", "Microsoft YaHei UI", "Segoe UI Emoji", "Segoe UI Symbol", monospace',
       fontSize: 13,
       lineHeight: 1.2,
       scrollback: 4000,
@@ -1095,7 +1234,7 @@ function SourceControlSummary({ status, error, onRefresh, onOpenFile }: { status
 }
 
 function translateTabTitle(tab: TabDTO): string {
-  if (tab.title === "PowerShell") return "PowerShell";
+  if (tab.title === "PowerShell" || tab.title === "Terminal") return "终端";
   if (tab.kind === "vcs") return "源代码管理";
   if (tab.kind === "editor") return "编辑器";
   if (tab.kind === "diffViewer") return "差异";

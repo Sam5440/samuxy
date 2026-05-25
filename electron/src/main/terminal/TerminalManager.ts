@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import pty from "node-pty";
-import { defaultShell } from "../platform.js";
+import { defaultShell, type TerminalShellPreference } from "../platform.js";
 
 export interface TerminalSession {
   paneID: string;
@@ -26,15 +26,23 @@ export class TerminalManager extends EventEmitter {
   private readonly viewports = new Map<string, { cols: number; rows: number }>();
   private readonly scrollOffsets = new Map<string, number>();
 
+  constructor(private readonly shellPreference: () => TerminalShellPreference = () => "auto") {
+    super();
+  }
+
   create(session: TerminalSession): void {
     if (this.sessions.has(session.paneID)) return;
-    const shell = defaultShell();
+    const shell = defaultShell(this.shellPreference());
     const child = pty.spawn(shell, [], {
       name: "xterm-256color",
       cols: session.cols,
       rows: session.rows,
       cwd: session.cwd,
-      env: process.env
+      env: {
+        ...process.env,
+        TERM: "xterm-256color",
+        COLORTERM: "truecolor"
+      }
     });
     child.onData((data) => {
       const lines = this.buffers.get(session.paneID) ?? [];

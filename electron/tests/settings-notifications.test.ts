@@ -24,12 +24,13 @@ describe("SettingsStore", () => {
   it("persists mobile port, shortcuts, and rich input drafts", () => {
     const filePath = path.join(makeTempRoot(), "settings.json");
     const settings = new SettingsStore(new JSONFileStore<AppSettings>(filePath));
-    settings.update({ mobilePort: 4911, updateChannel: "beta", shortcuts: { quickOpen: "Ctrl+K" } });
+    settings.update({ mobilePort: 4911, updateChannel: "beta", terminalShell: "nushell", shortcuts: { quickOpen: "Ctrl+K" } });
     settings.setRichInputDraft("pane-1", "multiline prompt");
 
     const restored = new SettingsStore(new JSONFileStore<AppSettings>(filePath)).get();
     expect(restored.mobilePort).toBe(4911);
     expect(restored.updateChannel).toBe("beta");
+    expect(restored.terminalShell).toBe("nushell");
     expect(restored.shortcuts.quickOpen).toBe("Ctrl+K");
     expect(restored.shortcuts.saveFile).toBe("Ctrl+S");
     expect(restored.richInputDrafts["pane-1"]).toBe("multiline prompt");
@@ -40,6 +41,7 @@ describe("SettingsStore", () => {
     expect(() => settings.update({ mobilePort: 80 })).toThrow("Mobile port");
     expect(() => settings.update({ shortcuts: { quickOpen: "" } })).toThrow("Shortcut");
     expect(() => settings.update({ updateChannel: "nightly" as AppSettings["updateChannel"] })).toThrow("Update channel");
+    expect(() => settings.update({ terminalShell: "zsh" as AppSettings["terminalShell"] })).toThrow("Terminal shell");
   });
 });
 

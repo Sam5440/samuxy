@@ -15,6 +15,11 @@ declare global {
         workspace?: WorkspaceDTO;
         mobilePort: number;
       } | undefined>;
+      removeProject(projectID: string): Promise<{
+        projects: ProjectDTO[];
+        workspace?: WorkspaceDTO;
+        mobilePort: number;
+      } | undefined>;
       selectProject(projectID: string): Promise<WorkspaceDTO | undefined>;
       createTab(projectID: string, areaID: string | undefined, kind: TabKind): Promise<WorkspaceDTO | undefined>;
       selectTab(projectID: string, areaID: string, tabID: string): Promise<WorkspaceDTO | undefined>;

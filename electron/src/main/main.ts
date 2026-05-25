@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
 import electronUpdater from "electron-updater";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,7 +32,7 @@ const updates = new UpdateService(settings, autoUpdater, {
   openExternal: (url) => shell.openExternal(url)
 });
 const model = new AppModel(process.cwd(), new JSONFileStore<AppModelSnapshot>(path.join(dataDirectory, "app-model.json")));
-const terminals = new TerminalManager();
+const terminals = new TerminalManager(() => settings.get().terminalShell);
 const git = new GitService();
 for (const session of model.terminalSessions()) {
   terminals.create(session);
@@ -153,6 +153,19 @@ ipcMain.handle("samuxy:addProject", async () => {
   return dashboardPayload(project.id);
 });
 
+ipcMain.handle("samuxy:removeProject", (_event, projectID: string) => {
+  const closedPaneIDs: string[] = [];
+  const workspace = model.getWorkspace(projectID);
+  if (workspace) {
+    for (const session of model.terminalSessions()) {
+      if (model.projectPath(projectID)) {
+        terminals.close(session.paneID);
+        closedPaneIDs.push(session.paneID);
+      }
+    }
+  }
+  return model.removeProject(projectID) ? dashboardPayload() : undefined;
+});
 ipcMain.handle("samuxy:selectProject", (_event, projectID: string) => {
   return model.selectProject(projectID) ? model.getWorkspace(projectID) : undefined;
 });
@@ -281,6 +294,7 @@ ipcMain.handle("samuxy:vcsStatus", async (_event, projectID: string) => {
 });
 
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null);
   updates.start();
   await server.start();
   await createWindow();

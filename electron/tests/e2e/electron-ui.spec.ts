@@ -49,7 +49,7 @@ test.describe("Electron Windows UI", () => {
   });
 
   test.afterEach(async () => {
-    await app.close();
+    await closeElectronApp(app);
     for (const filePath of fixturePaths) {
       fs.rmSync(filePath, { force: true });
     }
@@ -286,6 +286,24 @@ test.describe("Electron Windows UI", () => {
     fixturePaths.push(filePath);
   }
 });
+
+async function closeElectronApp(app: ElectronApplication): Promise<void> {
+  const closePromise = app.close().catch(() => undefined);
+  const closed = await Promise.race([
+    closePromise.then(() => true),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8000))
+  ]);
+  if (closed) return;
+
+  const child = app.process();
+  if (!child.killed) {
+    child.kill();
+  }
+  await Promise.race([
+    closePromise,
+    new Promise<void>((resolve) => setTimeout(resolve, 5000))
+  ]);
+}
 
 async function takeOverPaneFromMobile(page: Page, port: number): Promise<{ paneID: string }> {
   return page.evaluate(async (mobilePort) => {

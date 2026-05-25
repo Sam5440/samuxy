@@ -1,0 +1,97 @@
+name: Release Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Windows Electron version to release (X.Y.Z or X.Y.Z-beta.N)"
+        required: true
+        type: string
+      prerelease:
+        description: "Publish as a prerelease"
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: electron
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate version
+        shell: pwsh
+        run: |
+          $version = "${{ inputs.version }}"
+          if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$') {
+            throw "version must be X.Y.Z or X.Y.Z-beta.N"
+          }
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: electron/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set package version
+        shell: pwsh
+        run: npm version "${{ inputs.version }}" --no-git-tag-version
+
+      - name: Build signed Windows installer
+        shell: pwsh
+        env:
+          CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
+        run: |
+          if (-not $env:CSC_LINK -or -not $env:CSC_KEY_PASSWORD) {
+            throw "WINDOWS_CSC_LINK and WINDOWS_CSC_KEY_PASSWORD secrets are required for signed Windows release builds."
+          }
+          npm run dist:win:signed
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: samuxy-windows-${{ inputs.version }}
+          path: |
+            electron/release/samuxy-${{ inputs.version }}-x64.exe
+            electron/release/samuxy-${{ inputs.version }}-x64.exe.blockmap
+            electron/release/latest.yml
+
+      - name: Publish GitHub release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v${{ inputs.version }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          $assets = @(
+            "release/samuxy-${{ inputs.version }}-x64.exe",
+            "release/samuxy-${{ inputs.version }}-x64.exe.blockmap",
+            "release/latest.yml"
+          )
+          if (gh release view $env:TAG --repo "${{ github.repository }}" *> $null) {
+            gh release upload $env:TAG --repo "${{ github.repository }}" --clobber @assets
+          } else {
+            $args = @(
+              "release", "create", $env:TAG,
+              "--repo", "${{ github.repository }}",
+              "--title", "samuxy $env:TAG",
+              "--generate-notes"
+            )
+            if ($env:PRERELEASE -eq "true") {
+              $args += "--prerelease"
+            }
+            $args += $assets
+            gh @args
+          }

@@ -1,0 +1,91 @@
+{
+  "name": "samuxy",
+  "version": "0.1.0",
+  "description": "samuxy Windows desktop shell with mobile remote access.",
+  "author": "samuxy",
+  "private": true,
+  "type": "module",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "electron": "npm run build && electron .",
+    "prepare:icon": "node scripts/generate-icon.mjs",
+    "build": "tsc -p tsconfig.main.json && vite build",
+    "ci:windows": "npm run prepare:icon && npm run typecheck && npm test && npm run test:e2e && npm run dist:win",
+    "pack:win": "npm run prepare:icon && npm run build && electron-builder --win dir",
+    "dist:win": "npm run prepare:icon && npm run build && electron-builder --win nsis",
+    "dist:win:signed": "npm run prepare:icon && npm run build && electron-builder --win nsis --config.win.signAndEditExecutable=true --config.win.verifyUpdateCodeSignature=true",
+    "test": "vitest run",
+    "test:e2e": "npm run build && playwright test",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "build": {
+    "appId": "app.samuxy.windows",
+    "productName": "samuxy",
+    "directories": {
+      "output": "release"
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://github.com/samuxy/samuxy/releases/latest/download"
+      }
+    ],
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "npmRebuild": false,
+    "buildDependenciesFromSource": false,
+    "asar": true,
+    "asarUnpack": [
+      "**/node-pty/**",
+      "**/*.node"
+    ],
+    "win": {
+      "target": [
+        "dir",
+        "nsis"
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "signAndEditExecutable": false,
+      "verifyUpdateCodeSignature": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
+    }
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.1.1",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "electron-updater": "^6.8.3",
+    "highlight.js": "^11.11.1",
+    "iconv-lite": "^0.7.2",
+    "lucide-react": "^0.555.0",
+    "node-pty": "^1.1.0-beta34",
+    "qrcode": "^1.5.4",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "vite": "^7.2.4",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@types/node": "^24.10.1",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@types/ws": "^8.18.1",
+    "electron": "^39.2.6",
+    "electron-builder": "^26.8.1",
+    "png-to-ico": "^3.0.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.14"
+  }
+}

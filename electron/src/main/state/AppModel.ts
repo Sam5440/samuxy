@@ -94,6 +94,15 @@ export class AppModel {
     this.save();
     return worktree;
   }
+  removeProject(projectID: string): boolean {
+    const index = this.projects.findIndex((item) => item.id === projectID);
+    if (index === -1) return false;
+    this.projects.splice(index, 1);
+    this.worktrees.delete(projectID);
+    this.workspaces.delete(projectID);
+    this.save();
+    return true;
+  }
 
   removeWorktree(projectID: string, worktreeID: string): WorktreeDTO | undefined {
     const worktrees = this.worktrees.get(projectID);
@@ -161,7 +170,7 @@ export class AppModel {
     const tab: TabDTO = {
       id: id(),
       kind,
-      title: kind === "terminal" ? "PowerShell" : kind,
+      title: kind === "terminal" ? "Terminal" : kind,
       isPinned: false,
       paneID: kind === "terminal" ? id() : undefined
     };
@@ -312,7 +321,7 @@ export class AppModel {
 
   private makeArea(projectPath: string): TabAreaDTO {
     const paneID = id();
-    const tab: TabDTO = { id: id(), kind: "terminal", title: "PowerShell", isPinned: false, paneID };
+    const tab: TabDTO = { id: id(), kind: "terminal", title: "Terminal", isPinned: false, paneID };
     return { id: id(), projectPath, tabs: [tab], activeTabID: tab.id };
   }
 
@@ -421,6 +430,12 @@ export class AppModel {
       return node.tabArea.tabs.find((tab) => tab.paneID === paneID);
     }
     return this.findTab(node.split.first, paneID) ?? this.findTab(node.split.second, paneID);
+  }
+  private collectPaneIDs(node: WorkspaceDTO["root"]): string[] {
+    if (node.type === "tabArea") {
+      return node.tabArea.tabs.flatMap((tab) => tab.paneID ? [tab.paneID] : []);
+    }
+    return [...this.collectPaneIDs(node.split.first), ...this.collectPaneIDs(node.split.second)];
   }
 
   private collectTerminalSessions(node: WorkspaceDTO["root"], sessions: TerminalSessionDescriptor[]): void {

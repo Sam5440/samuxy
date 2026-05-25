@@ -1,8 +1,10 @@
 import { JSONFileStore } from "../storage/JSONFileStore.js";
+import type { TerminalShellPreference } from "../platform.js";
 
 export interface AppSettings {
   mobilePort: number;
   updateChannel: "stable" | "beta";
+  terminalShell: TerminalShellPreference;
   shortcuts: Record<string, string>;
   richInputDrafts: Record<string, string>;
 }
@@ -10,12 +12,14 @@ export interface AppSettings {
 const defaults: AppSettings = {
   mobilePort: 4865,
   updateChannel: "stable",
+  terminalShell: "auto",
   shortcuts: {
     commandPalette: "Ctrl+Shift+P",
-    quickOpen: "Ctrl+P",
     saveFile: "Ctrl+S",
     newTerminal: "Ctrl+Shift+T",
-    searchFiles: "Ctrl+Shift+F"
+    closeTab: "Ctrl+W",
+    searchFiles: "Ctrl+Shift+F",
+    toggleSidebar: "Ctrl+B"
   },
   richInputDrafts: {}
 };
@@ -24,7 +28,13 @@ export class SettingsStore {
   private settings: AppSettings;
 
   constructor(private readonly store?: JSONFileStore<AppSettings>) {
-    this.settings = { ...defaults, ...store?.read() };
+    const stored = store?.read();
+    this.settings = {
+      ...defaults,
+      ...stored,
+      shortcuts: { ...defaults.shortcuts, ...stored?.shortcuts },
+      richInputDrafts: { ...defaults.richInputDrafts, ...stored?.richInputDrafts }
+    };
     this.save();
   }
 
@@ -45,6 +55,9 @@ export class SettingsStore {
     }
     if (patch.updateChannel !== undefined && patch.updateChannel !== "stable" && patch.updateChannel !== "beta") {
       throw new Error("Update channel must be stable or beta.");
+    }
+    if (patch.terminalShell !== undefined && !isValidTerminalShell(patch.terminalShell)) {
+      throw new Error("Terminal shell must be auto, nushell, cmd, or powershell.");
     }
     this.settings = {
       ...this.settings,
@@ -67,4 +80,8 @@ export class SettingsStore {
 
 function isValidPort(port: number): boolean {
   return Number.isInteger(port) && port >= 1024 && port <= 65535;
+}
+
+function isValidTerminalShell(shell: string): shell is TerminalShellPreference {
+  return shell === "auto" || shell === "nushell" || shell === "cmd" || shell === "powershell";
 }

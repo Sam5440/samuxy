@@ -10,7 +10,9 @@
   --accent: #9fd067;
   --accent-soft: rgba(159, 208, 103, 0.12);
   --warning: #d8c66a;
-  font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  --font-ui: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+  --font-mono: "Maple Mono NF CN", "Hack Nerd Font Mono", "Hack Nerd Font", "Cascadia Code", "Cascadia Mono", "Consolas", "Courier New", "Microsoft YaHei UI", "Segoe UI Emoji", "Segoe UI Symbol", monospace;
+  font-family: var(--font-ui);
   color: var(--fg);
   background: var(--bg);
   font-synthesis: none;
@@ -144,6 +146,39 @@ button {
   width: 100%;
   padding: 8px;
 }
+.project-token-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px;
+}
+
+.project-token-row .project-token {
+  min-width: 0;
+}
+
+.project-remove {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-dim);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.project-token-row:hover .project-remove,
+.project-rail[data-expanded="true"] .project-remove {
+  opacity: 1;
+}
+
+.project-remove:hover {
+  background: rgba(210, 107, 107, 0.18);
+  color: #d26b6b;
+}
 
 .project-token {
   font-size: 12px;
@@ -164,7 +199,7 @@ button {
 
 .main-column {
   display: grid;
-  grid-template-rows: 32px 32px minmax(0, 1fr);
+  grid-template-rows: 36px 36px minmax(0, 1fr);
   position: relative;
   min-width: 0;
   min-height: 0;
@@ -174,12 +209,12 @@ button {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
-  height: 32px;
-  padding: 0 8px;
+  height: 36px;
+  padding: 0 10px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg);
+  background: linear-gradient(180deg, rgba(232, 237, 227, 0.035), rgba(232, 237, 227, 0));
   -webkit-app-region: drag;
 }
 
@@ -209,6 +244,7 @@ button {
   gap: 10px;
   min-width: 0;
   font-size: 12px;
+  letter-spacing: 0.01em;
 }
 
 .window-title strong,
@@ -220,7 +256,7 @@ button {
 
 .window-title strong {
   color: var(--fg);
-  font-weight: 600;
+  font-weight: 650;
 }
 
 .window-title span {
@@ -386,9 +422,9 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   min-width: 0;
-  height: 32px;
+  height: 36px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg);
+  background: rgba(11, 13, 11, 0.74);
 }
 
 .tabs-scroll {
@@ -404,12 +440,13 @@ button {
   gap: 6px;
   width: min(200px, max(92px, 18vw));
   min-width: 72px;
-  height: 32px;
-  padding: 0 10px;
+  height: 36px;
+  padding: 0 12px;
   border-right: 1px solid var(--border);
   background: transparent;
   color: var(--fg-muted);
   font-size: 12px;
+  font-weight: 500;
 }
 
 .tab-cell.active {
@@ -436,8 +473,8 @@ button {
 .tab-tools {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 2px 6px;
+  gap: 4px;
+  padding: 4px 8px;
   border-left: 1px solid var(--border);
 }
 
@@ -558,7 +595,7 @@ button {
   padding: 10px 12px;
   background: #0b0d0b;
   color: var(--fg);
-  font-family: "Cascadia Mono", "Consolas", "Microsoft YaHei UI", monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.55;
 }
@@ -583,7 +620,7 @@ button {
   overflow: auto;
   white-space: pre;
   tab-size: 2;
-  font-family: "Cascadia Mono", "Consolas", "Microsoft YaHei UI", monospace;
+  font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.55;
 }
@@ -851,6 +888,38 @@ button {
   margin-top: 8px;
 }
 
+.terminal-shell-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 160px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.terminal-shell-setting span {
+  overflow: hidden;
+  color: var(--fg-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-shell-setting select {
+  width: 160px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  outline: 0;
+  padding: 4px 6px;
+  border-radius: 5px;
+  background: #0b0d0b;
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.side-heading.compact {
+  margin-top: 10px;
+}
+
 .search-results button,
 .notice,
 .usage-provider {
@@ -964,7 +1033,7 @@ button {
   border-radius: 5px;
   background: #0b0d0b;
   color: var(--fg);
-  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-family: var(--font-mono);
 }
 
 @media (max-width: 900px) {
@@ -1101,7 +1170,7 @@ button {
   display: grid;
   width: min(200px, max(92px, 18vw));
   min-width: 72px;
-  height: 32px;
+  height: 36px;
   border-right: 1px solid var(--border);
 }
 
@@ -1129,7 +1198,7 @@ button {
 
 .tab-close {
   position: absolute;
-  top: 7px;
+  top: 9px;
   right: 6px;
   display: grid;
   place-items: center;
@@ -1161,7 +1230,7 @@ button {
 
 .tab-pick {
   position: absolute;
-  top: 9px;
+  top: 11px;
   right: 28px;
   width: 12px;
   height: 12px;
@@ -1183,10 +1252,14 @@ button {
 .merge-count {
   display: inline-grid;
   place-items: center;
-  min-width: 28px;
-  height: 22px;
+  min-width: 32px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
   color: var(--fg-dim);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 .terminal-pane,

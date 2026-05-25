@@ -29,7 +29,7 @@
     "publish": [
       {
         "provider": "generic",
-        "url": "https://github.com/samuxy/samuxy/releases/latest/download"
+        "url": "https://github.com/Sam5440/samuxy/releases/latest/download"
       }
     ],
     "files": [

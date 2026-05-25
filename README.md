@@ -95,6 +95,12 @@ cd electron
 npm run ci:windows
 ```
 
+GitHub Actions:
+
+- `.github/workflows/electron-windows.yml` runs Windows verification and packaging on every push to `main` and every pull request targeting `main`.
+- `.github/workflows/release-windows.yml` publishes a GitHub Release automatically when the root `version` value changes on `main`.
+- To release a new version, update the root `version` file, commit it, and push to `main`. The release workflow syncs that value into `electron/package.json`, builds the Windows installer, creates or updates tag `vX.Y.Z`, and uploads the installer, blockmap, and `latest.yml`.
+
 ## Start A Test Project
 
 Create an isolated test workspace under `.samuxy-test/` and launch samuxy against it:

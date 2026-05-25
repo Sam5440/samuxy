@@ -12,7 +12,7 @@ describe("samuxy Windows branding", () => {
     expect(packageJSON.description).toContain("samuxy Windows");
     expect(packageJSON.build.appId).toBe("app.samuxy.windows");
     expect(packageJSON.build.productName).toBe("samuxy");
-    expect(packageJSON.build.publish[0].url).toBe("https://github.com/samuxy/samuxy/releases/latest/download");
+    expect(packageJSON.build.publish[0].url).toBe("https://github.com/Sam5440/samuxy/releases/latest/download");
     expect(packageJSON.build.win.artifactName).toBe("${productName}-${version}-${arch}.${ext}");
     expect(packageLock.name).toBe("samuxy");
     expect(packageLock.packages[""].name).toBe("samuxy");

@@ -1,22 +1,96 @@
 name: Release Windows
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "version"
   workflow_dispatch:
     inputs:
       version:
-        description: "Windows Electron version to release (X.Y.Z or X.Y.Z-beta.N)"
-        required: true
+        description: "Windows Electron version to release. Leave empty to read root version."
+        required: false
         type: string
       prerelease:
-        description: "Publish as a prerelease"
+        description: "Publish as a prerelease. Leave false for stable versions."
         required: true
         type: boolean
-        default: true
+        default: false
+
+concurrency:
+  group: release-windows-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  build:
+  version:
+    name: Resolve release version
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+      should_release: ${{ steps.resolve.outputs.should_release }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: resolve
+        shell: pwsh
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          $version = $env:INPUT_VERSION
+          if (-not $version) {
+            $version = (Get-Content -Raw -Path "version").Trim()
+          }
+          if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$') {
+            throw "version must be X.Y.Z or X.Y.Z-suffix"
+          }
+
+          $shouldRelease = "true"
+          if ($env:EVENT_NAME -eq "push") {
+            $before = $env:BEFORE_SHA
+            $previousVersion = ""
+            if ($before -and $before -notmatch '^0+$') {
+              $previousVersion = (git show "$before`:version" 2>$null)
+              if ($LASTEXITCODE -ne 0) {
+                $previousVersion = ""
+              }
+              $previousVersion = ($previousVersion -join "`n").Trim()
+            }
+            if ($previousVersion -eq $version) {
+              $shouldRelease = "false"
+            }
+          }
+
+          $tag = "v$version"
+          $prerelease = "false"
+          if ($env:EVENT_NAME -eq "workflow_dispatch") {
+            $prerelease = if ($env:INPUT_PRERELEASE -eq "true") { "true" } else { "false" }
+          } elseif ($version -match "-") {
+            $prerelease = "true"
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "prerelease=$prerelease" >> $env:GITHUB_OUTPUT
+          "should_release=$shouldRelease" >> $env:GITHUB_OUTPUT
+
+  build-and-release:
+    name: Build and publish release
+    needs: version
+    if: needs.version.outputs.should_release == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 40
     permissions:
       contents: write
     defaults:
@@ -25,14 +99,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Validate version
-        shell: pwsh
-        run: |
-          $version = "${{ inputs.version }}"
-          if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$') {
-            throw "version must be X.Y.Z or X.Y.Z-beta.N"
-          }
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -44,54 +112,70 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Set package version
+      - name: Sync Electron package version
         shell: pwsh
-        run: npm version "${{ inputs.version }}" --no-git-tag-version
+        run: npm version "${{ needs.version.outputs.version }}" --no-git-tag-version
 
-      - name: Build signed Windows installer
+      - name: Build Windows installer
         shell: pwsh
         env:
           CSC_LINK: ${{ secrets.WINDOWS_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CSC_KEY_PASSWORD }}
         run: |
-          if (-not $env:CSC_LINK -or -not $env:CSC_KEY_PASSWORD) {
-            throw "WINDOWS_CSC_LINK and WINDOWS_CSC_KEY_PASSWORD secrets are required for signed Windows release builds."
+          if ($env:CSC_LINK -and $env:CSC_KEY_PASSWORD) {
+            npm run dist:win:signed
+          } else {
+            npm run dist:win
           }
-          npm run dist:win:signed
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: samuxy-windows-${{ inputs.version }}
+          name: samuxy-windows-${{ needs.version.outputs.version }}
           path: |
-            electron/release/samuxy-${{ inputs.version }}-x64.exe
-            electron/release/samuxy-${{ inputs.version }}-x64.exe.blockmap
+            electron/release/samuxy-${{ needs.version.outputs.version }}-x64.exe
+            electron/release/samuxy-${{ needs.version.outputs.version }}-x64.exe.blockmap
             electron/release/latest.yml
 
       - name: Publish GitHub release assets
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: v${{ inputs.version }}
-          PRERELEASE: ${{ inputs.prerelease }}
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
         run: |
           $assets = @(
-            "release/samuxy-${{ inputs.version }}-x64.exe",
-            "release/samuxy-${{ inputs.version }}-x64.exe.blockmap",
+            "release/samuxy-$env:VERSION-x64.exe",
+            "release/samuxy-$env:VERSION-x64.exe.blockmap",
             "release/latest.yml"
           )
           if (gh release view $env:TAG --repo "${{ github.repository }}" *> $null) {
             gh release upload $env:TAG --repo "${{ github.repository }}" --clobber @assets
+            gh release edit $env:TAG --repo "${{ github.repository }}" --latest
           } else {
             $args = @(
               "release", "create", $env:TAG,
               "--repo", "${{ github.repository }}",
               "--title", "samuxy $env:TAG",
+              "--target", "${{ github.sha }}",
               "--generate-notes"
             )
             if ($env:PRERELEASE -eq "true") {
               $args += "--prerelease"
+            } else {
+              $args += "--latest"
             }
             $args += $assets
             gh @args
           }
+
+  skipped:
+    name: Skip unchanged version
+    needs: version
+    if: needs.version.outputs.should_release != 'true'
+    runs-on: windows-latest
+    steps:
+      - name: Explain skip
+        shell: pwsh
+        run: Write-Host "The root version value did not change, so no release was published."

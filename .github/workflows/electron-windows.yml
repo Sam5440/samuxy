@@ -3,18 +3,8 @@ name: Electron Windows
 on:
   push:
     branches: [main]
-    paths:
-      - "electron/**"
-      - ".github/workflows/electron-windows.yml"
-      - "scripts/**"
-      - "README.md"
   pull_request:
     branches: [main]
-    paths:
-      - "electron/**"
-      - ".github/workflows/electron-windows.yml"
-      - "scripts/**"
-      - "README.md"
 
 jobs:
   test:
